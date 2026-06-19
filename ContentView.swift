@@ -1,27 +1,24 @@
 import SwiftUI
-import Playgrounds
+import AppKit
 
-@main struct MyApp: App {
-    
+@main
+struct MyApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
-    @StateObject var islandState = IslandState()
-    
     var body: some Scene {
-        WindowGroup {
-            ContentView().environmentObject(islandState)
+        Settings {
+            EmptyView()
         }
-        .windowStyle(.hiddenTitleBar)
     }
 }
 
 struct ContentView: View {
-    
-    @EnvironmentObject var islandState: IslandState
+
+    @ObservedObject var islandState: IslandState
+    let screen: NSScreen
     
     @State private var menuBarHeight: CGFloat = 24
     @State private var notchWidth: CGFloat = 150
-    
     @State private var isBouncing: Bool = false
     
     var body: some View {
@@ -60,16 +57,10 @@ struct ContentView: View {
         .onAppear {
             atualizarMetricasDaTela()
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
-            atualizarMetricasDaTela()
-        }
     }
     
     private func atualizarMetricasDaTela() {
-        guard let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main else {
-            return
-        }
-        
+        // Lemos as propriedades DIRETAMENTE da `screen` injetada para esta janela
         islandState.hasNotch = screen.safeAreaInsets.top > 0
         menuBarHeight = screen.frame.maxY - screen.visibleFrame.maxY
         
@@ -83,8 +74,8 @@ struct ContentView: View {
 }
 
 struct MacNotchShape: Shape {
-    var flareRadius: CGFloat = 8   // Curva invertida (para fora) encostada no teto
-    var bottomRadius: CGFloat = 16  // Curva normal (para dentro) na base
+    var flareRadius: CGFloat = 8
+    var bottomRadius: CGFloat = 16
     
     func path(in rect: CGRect) -> Path {
         var path = Path()
@@ -124,5 +115,5 @@ struct MacNotchShape: Shape {
 }
 
 #Preview {
-    ContentView()
+    ContentView(islandState: IslandState(), screen: NSScreen.main!)
 }

@@ -1,64 +1,76 @@
 //
-//  AppDelegation.swift
+//  AppDelegate.swift
 //  MyApp
 //
 //  Created by Felipe Giacomini Cocco on 18/06/26.
 //
 
 import AppKit
+import SwiftUI
 import Combine
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    
+    private var janelas: [NSWindow] = []
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         
         NSApp.setActivationPolicy(.accessory)
         
-        if let window = NSApplication.shared.windows.first {
-            window.isOpaque = false
-            window.backgroundColor = .clear
-            window.styleMask = .borderless
-            window.level = .statusBar
-            window.hasShadow = false
-            
-            posicionarJanela(window)
-        }
+        criarJanelasParaTodasAsTelas()
         
-        // Se um monitor externo for conectado/desconectado com o app aberto,
-        // reposiciona a janela automaticamente.
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard let window = NSApplication.shared.windows.first else { return }
-            self?.posicionarJanela(window)
+            self?.criarJanelasParaTodasAsTelas()
         }
     }
     
-    private func posicionarJanela(_ window: NSWindow) {
-        // Procura especificamente a tela com notch físico (a tela embutida do MacBook).
-        // NSScreen.main NÃO é necessariamente essa tela: quando há um monitor externo
-        // conectado e configurado como "principal", NSScreen.main retorna o monitor
-        // externo. O código calculava x/y usando as dimensões dessa tela errada — e
-        // ainda ignorava o "origin" da tela, assumindo que ela sempre começa em (0,0).
-        // Em multi-monitor isso só é verdade para a tela principal do sistema; a
-        // segunda tela (no caso, o MacBook) tem sua própria origem no espaço de
-        // coordenadas global. Essa combinação é o que causava o desalinhamento.
-        guard let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main else {
-            return
-        }
+    private func criarJanelasParaTodasAsTelas() {
+        janelas.forEach { $0.close() }
+        janelas.removeAll()
         
+        janelas = NSScreen.screens.map { criarJanela(para: $0) }
+    }
+    
+    private func criarJanela(para screen: NSScreen) -> NSWindow {
         let menuBarHeight = screen.frame.maxY - screen.visibleFrame.maxY
         
         let islandWidth: CGFloat = 400
         let islandHeight = menuBarHeight
         
+        // screen.frame.origin é essencial aqui: cada tela tem sua própria origem
+        // no espaço de coordenadas global do macOS (só a tela principal do
+        // sistema começa em x=0, y=0).
         let x = screen.frame.origin.x + (screen.frame.width - islandWidth) / 2
         let y = screen.frame.origin.y + screen.frame.height - islandHeight
         
-        let novaPosicao = NSRect(x: x, y: y, width: islandWidth, height: islandHeight)
-        window.setFrame(novaPosicao, display: true)
+        let frame = NSRect(x: x, y: y, width: islandWidth, height: islandHeight)
+        
+        let janela = NSWindow(
+            contentRect: frame,
+            styleMask: .borderless,
+            backing: .buffered,
+            defer: false,
+            screen: screen
+        )
+        
+        janela.isOpaque = false
+        janela.backgroundColor = .clear
+        janela.level = .statusBar
+        janela.hasShadow = false
+        janela.collectionBehavior = [.transient, .canJoinAllSpaces, .ignoresCycle, .fullScreenAuxiliary]
+        
+       
+        let conteudo = ContentView(islandState: IslandState(), screen: screen)
+        janela.contentView = NSHostingView(rootView: conteudo)
+        
+        janela.setFrame(frame, display: true)
+        janela.orderFrontRegardless()
+        
+        return janela
     }
 }
 
