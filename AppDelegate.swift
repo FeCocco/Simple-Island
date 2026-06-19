@@ -11,6 +11,8 @@ import Combine
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         
+        NSApp.setActivationPolicy(.accessory)
+        
         if let window = NSApplication.shared.windows.first {
             window.isOpaque = false
             window.backgroundColor = .clear
@@ -24,8 +26,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 
                 let menuBarHeight = screen.frame.maxY - screen.visibleFrame.maxY
 
-                let islandWidth: CGFloat = 150
-                let islandHeight = menuBarHeight 
+                let islandWidth: CGFloat = 400
+                let islandHeight = menuBarHeight
 
                 let x = (screenWidth - islandWidth) / 2
                 let y = screenHeight - islandHeight
