@@ -58,17 +58,26 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
         .onAppear {
-            if let screen = NSScreen.main {
-                islandState.hasNotch = screen.safeAreaInsets.top > 0
-                menuBarHeight = screen.frame.maxY - screen.visibleFrame.maxY
-                
-                let leftArea = screen.auxiliaryTopLeftArea?.width ?? 0
-                let rightArea = screen.auxiliaryTopRightArea?.width ?? 0
-                
-                if leftArea > 0 && rightArea > 0 {
-                    notchWidth = screen.frame.width - leftArea - rightArea
-                }
-            }
+            atualizarMetricasDaTela()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
+            atualizarMetricasDaTela()
+        }
+    }
+    
+    private func atualizarMetricasDaTela() {
+        guard let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main else {
+            return
+        }
+        
+        islandState.hasNotch = screen.safeAreaInsets.top > 0
+        menuBarHeight = screen.frame.maxY - screen.visibleFrame.maxY
+        
+        let leftArea = screen.auxiliaryTopLeftArea?.width ?? 0
+        let rightArea = screen.auxiliaryTopRightArea?.width ?? 0
+        
+        if leftArea > 0 && rightArea > 0 {
+            notchWidth = screen.frame.width - leftArea - rightArea
         }
     }
 }
