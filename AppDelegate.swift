@@ -15,6 +15,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var telasConhecidas: [CGDirectDisplayID] = []
     private var debounceWorkItem: DispatchWorkItem?
     
+    private let monitorDeReproducao = MonitorDeReproducao()
+    
     func applicationDidFinishLaunching(_ notification: Notification) {
         
         NSApp.setActivationPolicy(.accessory)
@@ -100,7 +102,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         janela.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         janela.isReleasedWhenClosed = false
         
-        let conteudo = ContentView(islandState: IslandState(), screen: screen)
+        let conteudo = ContentView(islandState: IslandState(), screen: screen, monitor: monitorDeReproducao)
         janela.contentView = NSHostingView(rootView: conteudo)
         
         janela.setFrame(frame, display: true)
