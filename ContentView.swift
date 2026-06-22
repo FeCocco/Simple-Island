@@ -41,7 +41,7 @@ struct ContentView: View {
                 .onHover { isHovering in
                     if isHovering {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
-                            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+                            NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .default)
                             isBouncing = true
                         }
                         
