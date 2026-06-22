@@ -29,23 +29,24 @@ struct ContentView: View {
             Rectangle()
                 .fill(Color.black)
                 .frame(
-                    width: (islandState.hasNotch ? notchWidth : 80) + (isBouncing ? 10 : 0),
-                    height: (islandState.hasNotch ? menuBarHeight : menuBarHeight/4) + (isBouncing ? 2 : 0)
+                    width: (islandState.hasNotch ? notchWidth : 80) + (isBouncing ? 20 : 0),
+                    height: (islandState.hasNotch ? (menuBarHeight - 2): menuBarHeight/4) + (isBouncing ? 4 : 0)
                 )
                 .clipShape(
-                    islandState.hasNotch
-                    ? AnyShape(UnevenRoundedRectangle(bottomLeadingRadius: 16, bottomTrailingRadius: 16, style: .continuous))
-                    : AnyShape(MacNotchShape(flareRadius: 6, bottomRadius: 8))
+                    MacNotchShape(
+                        flareRadius: islandState.hasNotch ? 6 : 6,
+                        bottomRadius: islandState.hasNotch ? 10 : 8
+                    )
                 )
                 .onHover { isHovering in
                     if isHovering {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.4)) {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
                             NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
                             isBouncing = true
                         }
                         
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.4)) {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
                                 isBouncing = false
                             }
                         }
@@ -60,7 +61,6 @@ struct ContentView: View {
     }
     
     private func atualizarMetricasDaTela() {
-        // Lemos as propriedades DIRETAMENTE da `screen` injetada para esta janela
         islandState.hasNotch = screen.safeAreaInsets.top > 0
         menuBarHeight = screen.frame.maxY - screen.visibleFrame.maxY
         
@@ -74,8 +74,16 @@ struct ContentView: View {
 }
 
 struct MacNotchShape: Shape {
-    var flareRadius: CGFloat = 8
-    var bottomRadius: CGFloat = 16
+    var flareRadius: CGFloat
+    var bottomRadius: CGFloat
+    
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(flareRadius, bottomRadius) }
+        set {
+            flareRadius = newValue.first
+            bottomRadius = newValue.second
+        }
+    }
     
     func path(in rect: CGRect) -> Path {
         var path = Path()

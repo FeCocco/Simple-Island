@@ -59,11 +59,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         janela.isOpaque = false
         janela.backgroundColor = .clear
-        janela.level = .statusBar
+        janela.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.maximumWindow)))
         janela.hasShadow = false
-        janela.collectionBehavior = [.transient, .canJoinAllSpaces, .ignoresCycle, .fullScreenAuxiliary]
+        janela.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         
-       
         let conteudo = ContentView(islandState: IslandState(), screen: screen)
         janela.contentView = NSHostingView(rootView: conteudo)
         
