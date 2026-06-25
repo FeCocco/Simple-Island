@@ -21,10 +21,16 @@ struct ContentView: View {
     @State private var menuBarHeight: CGFloat = 24
     @State private var notchWidth: CGFloat = 150
     @State private var isBouncing: Bool = false
+    @State private var isExpanded: Bool = false
+    @State private var globalClickMonitor: Any?
     
-    
+    // MARK: - Cálculos Dinâmicos de Tamanho
     var larguraAtual: CGFloat {
         let expansaoBounce: CGFloat = isBouncing ? 20 : 0
+        
+        if isExpanded {
+            return 360 + expansaoBounce
+        }
         
         if islandState.hasNotch {
             let expansaoMusica: CGFloat = monitor.faixaAtual != nil ? 110 : 0
@@ -37,6 +43,10 @@ struct ContentView: View {
     
     var alturaAtual: CGFloat {
         let expansaoBounce: CGFloat = isBouncing ? 4 : 0
+        
+        if isExpanded {
+            return 160 + expansaoBounce
+        }
         
         if islandState.hasNotch {
             return (menuBarHeight - 2) + expansaoBounce
@@ -59,47 +69,52 @@ struct ContentView: View {
                 .clipShape(
                     MacNotchShape(
                         flareRadius: 6,
-                        bottomRadius: islandState.hasNotch ? 10 : (monitor.faixaAtual != nil ? 12 : 8)
+                        bottomRadius: isExpanded ? 30 : (islandState.hasNotch ? 10 : (monitor.faixaAtual != nil ? 12 : 8))
                     )
                 )
-                .overlay(alignment: .bottom) {
-                    // Só desenha o conteúdo da música se tiver algo tocando
-                    if let faixa = monitor.faixaAtual {
-                        HStack {
-                            // ESQUERDA: Capa do Álbum
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 5)
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [Color(faixa.fonte.cor).opacity(0.8), Color(faixa.fonte.cor).opacity(0.3)],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
-                                
-                                Image(systemName: faixa.fonte == .spotify ? "waveform.circle.fill" : "applelogo")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.white.opacity(0.8))
+                .overlay(alignment: .top) {
+                    ZStack(alignment: .bottom) {
+                        if let faixa = monitor.faixaAtual {
+                            if isExpanded {
+                                LayoutExpandido(faixa: faixa, capa: monitor.capaAtual)
+                                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+                            } else {
+                                LayoutCompacto(faixa: faixa, capa: monitor.capaAtual, isNotch: islandState.hasNotch)
+                                    .transition(.scale(scale: 0.85).combined(with: .opacity))
                             }
-                            .frame(width: 20, height: 20)
-                            
-                            Spacer()
-                            
-                            // DIREITA: Playerzinho Animado (Waveform)
-                            WaveformAnimada(cor: Color(faixa.fonte.cor))
                         }
-                        .padding(.horizontal, 12)
-                        // Ajusta o padding para a capa não "vazar" da ilha
-                        .padding(.bottom, islandState.hasNotch ? 3 : 5)
-                        // Evita que o conteúdo apareça esmagado enquanto a ilha cresce
-                        .transition(.opacity.combined(with: .scale(scale: 0.8)))
                     }
+                    .frame(width: larguraAtual, height: alturaAtual)
+                    .clipped()
                 }
                 .animation(.spring(response: 0.4, dampingFraction: 0.6), value: larguraAtual)
                 .animation(.spring(response: 0.4, dampingFraction: 0.6), value: alturaAtual)
+                .animation(.spring(response: 0.4, dampingFraction: 0.7), value: isExpanded)
                 .animation(.spring(response: 0.4, dampingFraction: 0.6), value: monitor.faixaAtual)
+            
+                // MARK: - Gestos de Clique
+                .onTapGesture(count: 2) {
+                    // DUPLO CLIQUE: Abre a aplicação 
+                    if let fonte = monitor.faixaAtual?.fonte {
+                        abrirAppFonte(fonte)
+                        withAnimation { isExpanded = false }
+                    }
+                }
+                .onTapGesture(count: 1) {
+                    // CLIQUE ÚNICO: Apenas EXPande a ilha (se ainda não estiver expandida)
+                    if monitor.faixaAtual != nil {
+                        if !isExpanded {
+                            withAnimation {
+                                isExpanded = true
+                            }
+                        }
+                    } else {
+                        dispararBounce()
+                    }
+                }
+            
                 .onHover { isHovering in
-                    if isHovering {
+                    if isHovering && !isExpanded {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
                             NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .default)
                             isBouncing = true
@@ -117,10 +132,34 @@ struct ContentView: View {
         .ignoresSafeArea()
         .onAppear {
             atualizarMetricasDaTela()
+            configurarMonitorDeCliquesFora()
         }
         .onChange(of: monitor.faixaAtual) {
-            guard monitor.faixaAtual != nil else { return }
-            dispararBounce()
+            if monitor.faixaAtual == nil {
+                withAnimation { isExpanded = false }
+            } else {
+                dispararBounce()
+            }
+        }
+    }
+    
+    // MARK: - Funções Auxiliares
+    
+    private func configurarMonitorDeCliquesFora() {
+        // Interceta qualquer clique (esquerdo ou direito) que aconteça FORA da nossa janela
+        globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { _ in
+            // Se a ilha estiver aberta e o utilizador clicar noutro sítio, fecha a ilha suavemente
+            if isExpanded {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                    isExpanded = false
+                }
+            }
+        }
+    }
+    
+    private func abrirAppFonte(_ fonte: FonteMusical) {
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: fonte.bundleID) {
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
         }
     }
     
@@ -137,6 +176,8 @@ struct ContentView: View {
     }
     
     private func dispararBounce() {
+        guard !isExpanded else { return }
+        
         withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
             isBouncing = true
         }
@@ -145,6 +186,111 @@ struct ContentView: View {
                 isBouncing = false
             }
         }
+    }
+}
+
+// MARK: - Componentes de Layout
+
+struct LayoutCompacto: View {
+    var faixa: FaixaAtual
+    var capa: NSImage?
+    var isNotch: Bool
+    
+    var body: some View {
+        HStack {
+            ZStack {
+                if let capa = capa {
+                    Image(nsImage: capa)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 20, height: 20)
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                        .transition(.opacity)
+                } else {
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(faixa.fonte.cor).opacity(0.8), Color(faixa.fonte.cor).opacity(0.3)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .transition(.opacity)
+                    
+                    Image(systemName: faixa.fonte == .spotify ? "waveform.circle.fill" : "applelogo")
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.8))
+                        .transition(.opacity)
+                }
+            }
+            .frame(width: 20, height: 20)
+            .animation(.easeInOut(duration: 0.3), value: capa)
+            
+            Spacer()
+            
+            WaveformAnimada(cor: Color(faixa.fonte.cor))
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, isNotch ? 3 : 5)
+    }
+}
+
+struct LayoutExpandido: View {
+    var faixa: FaixaAtual
+    var capa: NSImage?
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            HStack(alignment: .top, spacing: 16) {
+                if let capa = capa {
+                    Image(nsImage: capa)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 60, height: 60)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .shadow(color: .black.opacity(0.3), radius: 5, y: 2)
+                } else {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 60, height: 60)
+                }
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(faixa.titulo)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    
+                    Text(faixa.artista)
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundColor(.white.opacity(0.6))
+                        .lineLimit(1)
+                }
+                .padding(.top, 4)
+                
+                Spacer()
+                
+                Image(systemName: faixa.fonte == .spotify ? "waveform.circle.fill" : "applelogo")
+                    .font(.system(size: 20))
+                    .foregroundColor(Color(faixa.fonte.cor))
+            }
+            
+            HStack(spacing: 40) {
+                Image(systemName: "backward.fill")
+                    .font(.title2)
+                    .foregroundColor(.white)
+                
+                Image(systemName: "pause.fill")
+                    .font(.largeTitle)
+                    .foregroundColor(.white)
+                
+                Image(systemName: "forward.fill")
+                    .font(.title2)
+                    .foregroundColor(.white)
+            }
+        }
+        .padding(24)
+        .frame(maxHeight: .infinity, alignment: .bottom)
     }
 }
 
