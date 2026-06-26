@@ -76,7 +76,7 @@ struct ContentView: View {
                     ZStack(alignment: .bottom) {
                         if let faixa = monitor.faixaAtual {
                             if isExpanded {
-                                LayoutExpandido(faixa: faixa, capa: monitor.capaAtual)
+                                LayoutExpandido(faixa: faixa, capa: monitor.capaAtual, monitor: monitor)
                                     .transition(.scale(scale: 0.85).combined(with: .opacity))
                             } else {
                                 LayoutCompacto(faixa: faixa, capa: monitor.capaAtual, isNotch: islandState.hasNotch)
@@ -136,7 +136,9 @@ struct ContentView: View {
         }
         .onChange(of: monitor.faixaAtual) {
             if monitor.faixaAtual == nil {
-                withAnimation { isExpanded = false }
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                    isExpanded = false
+                }
             } else {
                 dispararBounce()
             }
@@ -238,6 +240,7 @@ struct LayoutCompacto: View {
 struct LayoutExpandido: View {
     var faixa: FaixaAtual
     var capa: NSImage?
+    @ObservedObject var monitor: MonitorDeReproducao
     
     var body: some View {
         VStack(spacing: 20) {
@@ -276,17 +279,35 @@ struct LayoutExpandido: View {
             }
             
             HStack(spacing: 40) {
-                Image(systemName: "backward.fill")
-                    .font(.title2)
-                    .foregroundColor(.white)
+                Button {
+                    monitor.enviarComando("previous track", para: faixa.fonte)
+                } label: {
+                    Image(systemName: "backward.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(.white)
+                } .buttonStyle(EstiloBotaoIlha())
                 
-                Image(systemName: "pause.fill")
-                    .font(.largeTitle)
-                    .foregroundColor(.white)
+                Button {
+                    monitor.enviarComando("playpause", para: faixa.fonte)
+                } label: {
+                    if monitor.estaTocando {
+                            Image(systemName: "pause.fill")
+                                .font(.largeTitle)
+                                .foregroundColor(.white)
+                        } else {
+                            Image(systemName: "play.fill")
+                                .font(.largeTitle)
+                                .foregroundColor(.white)
+                    }
+                } .buttonStyle(EstiloBotaoIlha())
                 
-                Image(systemName: "forward.fill")
-                    .font(.title2)
-                    .foregroundColor(.white)
+                Button {
+                    monitor.enviarComando("next track", para: faixa.fonte)
+                } label: {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(.white)
+                } .buttonStyle(EstiloBotaoIlha())
             }
         }
         .padding(24)
@@ -325,6 +346,15 @@ struct WaveformAnimada: View {
                 .fill(cor)
                 .frame(width: 3, height: altura)
         }
+    }
+}
+
+struct EstiloBotaoIlha: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.5 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.9 : 1.0)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 

@@ -8,6 +8,7 @@
 import Foundation
 import AppKit
 import Combine
+import SwiftUI
 
 enum FonteMusical: Equatable {
     case spotify
@@ -50,30 +51,16 @@ struct FaixaAtual: Equatable {
     var fonte: FonteMusical
 }
 
-/// Importante: deve existir UMA única instância, compartilhada entre todas
-/// as janelas da ilha (uma por tela). A música tocando é a mesma para o
-/// sistema inteiro, diferente de `IslandState`, que é por tela.
-///
-/// `faixaAtual` e `capaAtual` são publicados separadamente de propósito:
-/// a capa chega depois, de forma assíncrona, e não deve disparar de novo
-/// as animações de tamanho/bounce que já reagem à troca de faixa.
 final class MonitorDeReproducao: ObservableObject {
 
     @Published private(set) var faixaAtual: FaixaAtual?
     @Published private(set) var capaAtual: NSImage?
+    @Published private(set) var estaTocando: Bool = false
 
     private let central = DistributedNotificationCenter.default()
 
-    /// Toda chamada de AppleScript (consulta de estado OU de capa) passa
-    /// por aqui. É serial de propósito: evita várias threads disparando
-    /// Apple Events pro mesmo app ao mesmo tempo.
     private let filaAppleScript = DispatchQueue(label: "MonitorDeReproducao.appleScript", qos: .userInitiated)
 
-    /// Identifica a última faixa para a qual já iniciamos uma busca de
-    /// capa — usado pra ignorar resultados que chegam atrasados depois
-    /// que a faixa já trocou de novo, e pra não rebuscar a mesma capa
-    /// em notificações repetidas (Spotify dispara isso até em "seek").
-    /// Só é lido/escrito na main thread.
     private var chaveDaUltimaCapaBuscada: String?
 
     init() {
@@ -115,37 +102,39 @@ final class MonitorDeReproducao: ObservableObject {
         guard let userInfo = userInfo else { return }
 
         let estado = userInfo["Player State"] as? String
+        let estaTocandoAgora = (estado == "Playing")
 
-        guard estado == "Playing" else {
-            // O player pausou ou parou. Só limpamos a ilha se era ESSE
-            // player quem estava sendo exibido — e aproveitamos para
-            // checar se o outro player passou a tocar.
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-                if self.faixaAtual?.fonte == fonte {
-                    self.faixaAtual = nil
-                    self.capaAtual = nil
-                    self.chaveDaUltimaCapaBuscada = nil
-                    self.consultarEstadoInicial()
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            self.estaTocando = estaTocandoAgora
+            
+            if !estaTocandoAgora {
+                Task {
+                    try? await Task.sleep(for: .seconds(10)) //MARK: Talvez seja bom deixar o usuario final esqcolher esse tempo
+                    
+                    if !self.estaTocando && self.faixaAtual?.fonte == fonte {
+                        withAnimation {
+                            self.faixaAtual = nil
+                            self.capaAtual = nil
+                            self.chaveDaUltimaCapaBuscada = nil
+                        }
+                    }
                 }
+            } else {
+                let faixa = FaixaAtual(
+                    titulo: userInfo["Name"] as? String ?? "",
+                    artista: userInfo["Artist"] as? String ?? "",
+                    album: userInfo["Album"] as? String ?? "",
+                    fonte: fonte
+                )
+                self.aplicar(faixa)
             }
-            return
         }
-
-        let faixa = FaixaAtual(
-            titulo: userInfo["Name"] as? String ?? "",
-            artista: userInfo["Artist"] as? String ?? "",
-            album: userInfo["Album"] as? String ?? "",
-            fonte: fonte
-        )
-
-        aplicar(faixa)
     }
 
     // MARK: - Aplicação de uma nova faixa
 
-    /// Ponto único por onde toda faixa nova passa, venha de notificação
-    /// ou de consulta inicial. Decide se vale a pena buscar capa nova.
     private func aplicar(_ faixa: FaixaAtual) {
         let chave = chaveDaFaixa(faixa)
 
@@ -171,9 +160,6 @@ final class MonitorDeReproducao: ObservableObject {
 
     // MARK: - Consulta inicial via AppleScript (faixa já tocando)
 
-    /// Pergunta diretamente a cada player se algo já está tocando.
-    /// Útil só no momento em que a ilha é criada (ou quando um player
-    /// pausa e queremos saber se o outro assumiu).
     private func consultarEstadoInicial() {
         for fonte in [FonteMusical.spotify, .appleMusic] {
             guard appEstaAberto(fonte.bundleID) else { continue }
@@ -188,13 +174,10 @@ final class MonitorDeReproducao: ObservableObject {
     private func consultarFaixaAtual(_ fonte: FonteMusical) {
         let nomeApp = fonte.nomeParaAppleScript
 
+        
         let script = """
         tell application "\(nomeApp)"
-            if player state is playing then
-                return (name of current track) & "||" & (artist of current track) & "||" & (album of current track)
-            else
-                return ""
-            end if
+            return (name of current track) & "||" & (artist of current track) & "||" & (album of current track) & "||" & (player state as text)
         end tell
         """
 
@@ -202,14 +185,28 @@ final class MonitorDeReproducao: ObservableObject {
             guard let self = self,
                   let resultado = self.executarAppleScript(script)?.stringValue,
                   !resultado.isEmpty else { return }
-
-            let partes = resultado.components(separatedBy: "||")
-            guard partes.count == 3 else { return }
-
-            let faixa = FaixaAtual(titulo: partes[0], artista: partes[1], album: partes[2], fonte: fonte)
-            self.aplicar(faixa)
+            
+            let componentes = resultado.components(separatedBy: "||")
+            
+            if componentes.count >= 4 {
+                let nome = componentes[0]
+                let artista = componentes[1]
+                let album = componentes[2]
+                
+                let estadoTexto = componentes[3].trimmingCharacters(in: .whitespacesAndNewlines)
+                
+                let tocando = (estadoTexto == "playing")
+                
+                let faixa = FaixaAtual(titulo: nome, artista: artista, album: album, fonte: fonte)
+                
+                DispatchQueue.main.async {
+                    self.aplicar(faixa)
+                    self.estaTocando = tocando
+                }
+            }
         }
     }
+    
 
     // MARK: - Capa do álbum
 
@@ -274,7 +271,7 @@ final class MonitorDeReproducao: ObservableObject {
         }
 
         URLSession.shared.dataTask(with: url) { dados, _, erro in
-            if let erro = erro {
+            if erro != nil {
                 completion(nil)
                 return
             }
@@ -327,6 +324,23 @@ final class MonitorDeReproducao: ObservableObject {
         miniatura.unlockFocus()
         return miniatura
     }
+    
+    
+    //MARK: Controles de mídia
+    
+    func enviarComando(_ comando: String, para fonte: FonteMusical) {
+            let nomeApp = fonte.nomeParaAppleScript
+            
+            let script = """
+            tell application "\(nomeApp)"
+                \(comando)
+            end tell
+            """
+            
+            filaAppleScript.async { [weak self] in
+                _ = self?.executarAppleScript(script)
+            }
+        }
 
     // MARK: - AppleScript
 
