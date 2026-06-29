@@ -17,10 +17,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     private let monitorDeReproducao = MonitorDeReproducao()
     
+    private var espacoFixo: CGSSpace?
+    
     func applicationDidFinishLaunching(_ notification: Notification) {
         
         NSApp.setActivationPolicy(.accessory)
         
+        espacoFixo = CGSSpace(level: Int(CGWindowLevelForKey(.maximumWindow)))
+                        
         criarJanelasParaTodasAsTelas()
         
     NotificationCenter.default.addObserver(
@@ -71,6 +75,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let telas = NSScreen.screens
         janelas = telas.map { criarJanela(para: $0) }
         telasConhecidas = idsDasTelas(telas)
+        
+        if let espaco = espacoFixo {
+                    espaco.windows = Set(janelas)
+        }
     }
     
     private func criarJanela(para screen: NSScreen) -> NSWindow {
