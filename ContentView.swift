@@ -33,7 +33,7 @@ struct ContentView: View {
         }
         
         if islandState.hasNotch {
-            let expansaoMusica: CGFloat = monitor.faixaAtual != nil ? 110 : 0
+            let expansaoMusica: CGFloat = monitor.faixaAtual != nil ? 65 : 0
             return notchWidth + expansaoMusica + expansaoBounce
         } else {
             let larguraBase: CGFloat = monitor.faixaAtual != nil ? 200 : 80
